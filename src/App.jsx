@@ -426,7 +426,8 @@ function GameCard({ game, onClick, currentTheme, showStatus = false, status = nu
 }
 
 // Page Accueil
-function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQuery, searchResults, setSearchResults, searching, setSearching }) {
+// Page Accueil
+function HomePage({ onGameClick, currentTheme, backlog }) {
   const [categoryGames, setCategoryGames] = useState({});
   const [loading, setLoading] = useState({});
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -435,11 +436,94 @@ function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQu
   const [categoryPage, setCategoryPage] = useState(1);
   const [categoryHasMore, setCategoryHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  
+  // États pour la recherche avec suggestions
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+
+  // Debounce pour les suggestions
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      const { games } = await searchGames(searchQuery, 1);
+      setSuggestions(games.slice(0, 8));
+      setShowSuggestions(true);
+      setSearching(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Gestion de la touche Entrée
+  const handleSearchSubmit = () => {
+    if (searchQuery.trim()) {
+      openSearchModal(searchQuery);
+    }
+  };
+
+  // Gestion des touches fléchées
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => 
+        prev < suggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedSuggestionIndex >= 0 && suggestions[selectedSuggestionIndex]) {
+        onGameClick(suggestions[selectedSuggestionIndex]);
+        setSearchQuery('');
+        setSuggestions([]);
+        setShowSuggestions(false);
+        setSelectedSuggestionIndex(-1);
+      } else if (searchQuery.trim()) {
+        handleSearchSubmit();
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSelectedSuggestionIndex(-1);
+    }
+  };
+
+  // Modal de recherche complète
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasMore, setSearchHasMore] = useState(false);
   const [loadingSearchMore, setLoadingSearchMore] = useState(false);
-  const [debounceTimer, setDebounceTimer] = useState(null);
+
+  const openSearchModal = async (query) => {
+    setSearching(true);
+    const { games, nextPage } = await searchGames(query, 1);
+    setSearchResults(games);
+    setSearchHasMore(nextPage !== null);
+    setSearchPage(nextPage || 1);
+    setSearching(false);
+    setShowSearchModal(true);
+    setShowSuggestions(false);
+  };
+
+  const loadMoreSearch = async () => {
+    if (loadingSearchMore || !searchHasMore) return;
+    setLoadingSearchMore(true);
+    const { games, nextPage } = await searchGames(searchQuery, searchPage);
+    setSearchResults(prev => [...prev, ...games]);
+    setSearchHasMore(nextPage !== null);
+    setSearchPage(nextPage || searchPage);
+    setLoadingSearchMore(false);
+  };
 
   // Gestion touche ESC
   useEffect(() => {
@@ -447,6 +531,7 @@ function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQu
       if (e.key === 'Escape') {
         if (showCategoryModal) setShowCategoryModal(false);
         if (showSearchModal) setShowSearchModal(false);
+        setShowSuggestions(false);
       }
     };
     window.addEventListener('keydown', handleEsc);
@@ -465,41 +550,6 @@ function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQu
     };
     loadAllCategories();
   }, []);
-
-  // Recherche en temps réel avec debounce
-  useEffect(() => {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      setShowSearchModal(false);
-      return;
-    }
-    
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      const { games, nextPage } = await searchGames(searchQuery, 1);
-      setSearchResults(games);
-      setSearchHasMore(nextPage !== null);
-      setSearchPage(nextPage || 1);
-      setSearching(false);
-      setShowSearchModal(true);
-    }, 500);
-    
-    setDebounceTimer(timer);
-    
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const loadMoreSearch = async () => {
-    if (loadingSearchMore || !searchHasMore) return;
-    setLoadingSearchMore(true);
-    const { games, nextPage } = await searchGames(searchQuery, searchPage);
-    setSearchResults(prev => [...prev, ...games]);
-    setSearchHasMore(nextPage !== null);
-    setSearchPage(nextPage || searchPage);
-    setLoadingSearchMore(false);
-  };
 
   const openCategoryModal = async (cat) => {
     setSelectedCategory(cat);
@@ -583,8 +633,8 @@ function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQu
     );
   }
 
-  // Modal recherche
-  if (showSearchModal && searchResults.length > 0) {
+  // Modal recherche complète
+  if (showSearchModal) {
     return (
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 1000, overflow: 'auto', padding: 20 }}>
         <div style={{ maxWidth: 1400, margin: '0 auto' }}>
@@ -601,38 +651,47 @@ function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQu
             }}>✕ Fermer</button>
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 20 }}>
-            {searchResults.map(game => (
-              <GameCard 
-                key={game.id} 
-                game={game} 
-                onClick={onGameClick} 
-                currentTheme={currentTheme}
-                showStatus={true}
-                status={getGameStatus(game.id)}
-              />
-            ))}
-          </div>
-          
-          {searchHasMore && (
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
-              <button
-                onClick={loadMoreSearch}
-                disabled={loadingSearchMore}
-                style={{
-                  background: currentTheme.card,
-                  border: `1px solid ${currentTheme.accent}`,
-                  borderRadius: 50,
-                  padding: '12px 32px',
-                  cursor: loadingSearchMore ? 'wait' : 'pointer',
-                  color: currentTheme.text,
-                  fontSize: 14,
-                  fontWeight: 500
-                }}
-              >
-                {loadingSearchMore ? 'Chargement...' : '+ Charger plus de résultats'}
-              </button>
-            </div>
+          {searching && searchResults.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 60 }}>Recherche en cours...</div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 20 }}>
+                {searchResults.map(game => (
+                  <GameCard 
+                    key={game.id} 
+                    game={game} 
+                    onClick={(g) => {
+                      onGameClick(g);
+                      setShowSearchModal(false);
+                    }} 
+                    currentTheme={currentTheme}
+                    showStatus={true}
+                    status={getGameStatus(game.id)}
+                  />
+                ))}
+              </div>
+              
+              {searchHasMore && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
+                  <button
+                    onClick={loadMoreSearch}
+                    disabled={loadingSearchMore}
+                    style={{
+                      background: currentTheme.card,
+                      border: `1px solid ${currentTheme.accent}`,
+                      borderRadius: 50,
+                      padding: '12px 32px',
+                      cursor: loadingSearchMore ? 'wait' : 'pointer',
+                      color: currentTheme.text,
+                      fontSize: 14,
+                      fontWeight: 500
+                    }}
+                  >
+                    {loadingSearchMore ? 'Chargement...' : '+ Charger plus de résultats'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -641,32 +700,128 @@ function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQu
 
   return (
     <div>
-      {/* Barre de recherche avec suggestions en temps réel */}
+      {/* Barre de recherche avec suggestions */}
       <div style={{ marginBottom: 32, position: 'relative' }}>
-        <input
-          type="text"
-          placeholder="🔍 Rechercher un jeu (Titre, genre...) - La recherche est instantanée"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '14px 20px',
-            borderRadius: 50,
-            border: `2px solid ${currentTheme.border}`,
-            background: currentTheme.card,
-            color: currentTheme.text,
-            fontSize: 15,
-            outline: 'none',
-            boxSizing: 'border-box'
-          }}
-          onFocus={(e) => e.target.style.borderColor = currentTheme.accent}
-          onBlur={(e) => e.target.style.borderColor = currentTheme.border}
-        />
-        {searching && searchQuery.trim() && (
-          <div style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)' }}>
-            <div style={{ width: 20, height: 20, border: `2px solid ${currentTheme.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <input
+              type="text"
+              placeholder="🔍 Rechercher un jeu... (tapez et les suggestions apparaissent)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onFocus={() => searchQuery.trim() && suggestions.length > 0 && setShowSuggestions(true)}
+              style={{
+                width: '100%',
+                padding: '14px 20px',
+                borderRadius: 50,
+                border: `2px solid ${currentTheme.border}`,
+                background: currentTheme.card,
+                color: currentTheme.text,
+                fontSize: 15,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+              onFocus={(e) => e.target.style.borderColor = currentTheme.accent}
+              onBlur={(e) => {
+                e.target.style.borderColor = currentTheme.border;
+                setTimeout(() => setShowSuggestions(false), 200);
+              }}
+            />
+            {searching && (
+              <div style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)' }}>
+                <div style={{ width: 20, height: 20, border: `2px solid ${currentTheme.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+              </div>
+            )}
+            
+            {/* Suggestions déroulantes - fond NON transparent */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: 8,
+                background: currentTheme.bg,
+                borderRadius: 16,
+                border: `1px solid ${currentTheme.border}`,
+                overflow: 'hidden',
+                zIndex: 100,
+                boxShadow: '0 10px 25px rgba(0,0,0,0.5)'
+              }}>
+                {suggestions.map((game, index) => (
+                  <div
+                    key={game.id}
+                    onClick={() => {
+                      onGameClick(game);
+                      setSearchQuery('');
+                      setSuggestions([]);
+                      setShowSuggestions(false);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '12px 16px',
+                      cursor: 'pointer',
+                      transition: '0.2s',
+                      background: selectedSuggestionIndex === index ? currentTheme.card : currentTheme.bg,
+                      borderBottom: index < suggestions.length - 1 ? `1px solid ${currentTheme.border}` : 'none'
+                    }}
+                    onMouseEnter={() => setSelectedSuggestionIndex(index)}
+                    onMouseLeave={() => setSelectedSuggestionIndex(-1)}
+                  >
+                    {game.image ? (
+                      <img src={game.image} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: 48, height: 48, borderRadius: 8, background: currentTheme.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🎮</div>
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: currentTheme.text }}>{game.name}</div>
+                      <div style={{ color: currentTheme.muted, fontSize: 12, marginTop: 2 }}>
+                        {game.released?.split('-')[0] || '?'} • ⭐ {game.rating?.toFixed(1) || '?'}
+                      </div>
+                    </div>
+                    <div style={{ color: currentTheme.muted, fontSize: 12 }}>↵</div>
+                  </div>
+                ))}
+                <div
+                  onClick={handleSearchSubmit}
+                  style={{
+                    padding: '12px 16px',
+                    background: currentTheme.bg,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    color: currentTheme.accent,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    transition: '0.2s',
+                    borderTop: `1px solid ${currentTheme.border}`
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = currentTheme.card}
+                  onMouseLeave={(e) => e.currentTarget.style.background = currentTheme.bg}
+                >
+                  🔍 Voir tous les résultats pour "{searchQuery}" (Entrée)
+                </div>
+              </div>
+            )}
           </div>
-        )}
+          <button
+            onClick={handleSearchSubmit}
+            style={{
+              background: currentTheme.accent,
+              border: 'none',
+              borderRadius: 50,
+              padding: '0 24px',
+              color: 'white',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 14
+            }}
+          >
+            Rechercher
+          </button>
+        </div>
       </div>
 
       {/* Catégories en défilement horizontal */}
