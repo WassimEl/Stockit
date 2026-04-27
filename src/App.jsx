@@ -821,6 +821,7 @@ function UpcomingPage({ onGameClick, currentTheme, backlog }) {
 }
 
 // Page Bibliothèque
+// Page Bibliothèque
 function LibraryPage({ backlog, onUpdateRating, onUpdateTime, onUpdateStatus, onDeleteGame, currentTheme }) {
   const [filter, setFilter] = useState('all');
 
@@ -852,27 +853,42 @@ function LibraryPage({ backlog, onUpdateRating, onUpdateTime, onUpdateStatus, on
               animation: 'fadeIn 0.3s ease-out',
               position: 'relative'
             }}>
+              {/* Croix de suppression style navigateur */}
               <button
                 onClick={() => onDeleteGame(game.id)}
                 style={{
                   position: 'absolute',
-                  top: 8,
-                  right: 8,
-                  background: '#ef4444',
+                  bottom: 12,
+                  right: 12,
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: 'transparent',
                   border: 'none',
-                  borderRadius: 20,
-                  padding: '6px 12px',
-                  fontSize: 12,
-                  color: 'white',
+                  color: currentTheme.muted,
+                  fontSize: 18,
                   cursor: 'pointer',
-                  zIndex: 2,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 4
+                  justifyContent: 'center',
+                  transition: 'all 0.2s ease',
+                  zIndex: 2,
+                  backdropFilter: 'blur(4px)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#ef4444';
+                  e.currentTarget.style.color = 'white';
+                  e.currentTarget.style.transform = 'scale(1.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = currentTheme.muted;
+                  e.currentTarget.style.transform = 'scale(1)';
                 }}
               >
-                ✕ Supprimer
+                ✕
               </button>
+              
               {game.image ? (
                 <img src={game.image} alt={game.name} style={{ width: '100%', height: 160, objectFit: 'cover' }} />
               ) : (
