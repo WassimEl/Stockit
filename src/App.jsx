@@ -1359,34 +1359,30 @@ function ProfileSelector({ onSelectUser }) {
   async function deleteUserHandler(userId, e) { e.stopPropagation(); if (confirm('Supprimer ce profil ?')) { await deleteUser(userId); loadUsers(); } }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0a0f', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ textAlign: 'center', maxWidth: 800 }}>
-        <h1 style={{ fontSize: 44, marginBottom: 40, fontFamily: "'Inter', sans-serif" }}>📦 <span style={{ color: '#3b82f6' }}>Stockit</span></h1>
-        <h2 style={{ color: 'white', marginBottom: 32, fontSize: 20 }}>Qui joue ?</h2>
-        {loading && <div style={{ color: 'white' }}>Chargement...</div>}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, justifyContent: 'center' }}>
-          {users.map(user => (
-            <div key={user.id} onClick={() => onSelectUser({ id: user.id, name: user.name, theme: user.theme })} style={{ textAlign: 'center', cursor: 'pointer', transition: '0.2s' }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.03)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}>
-              <div style={{ width: 110, height: 110, borderRadius: 55, background: THEMES[user.theme]?.accent || '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 44, marginBottom: 10, position: 'relative' }}>
-                {user.avatar || '🎮'}
-                <button onClick={(e) => deleteUserHandler(user.id, e)} style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', border: 'none', borderRadius: '50%', width: 26, height: 26, color: 'white', cursor: 'pointer', fontSize: 12 }}>✕</button>
-              </div>
-              <div style={{ color: 'white', fontWeight: 500, fontSize: 14 }}>{user.name}</div>
-            </div>
-          ))}
-          {!showNewUser ? (
-            <div onClick={() => setShowNewUser(true)} style={{ width: 110, height: 110, borderRadius: 55, background: 'rgba(255,255,255,0.05)', border: '2px dashed rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, cursor: 'pointer' }}>+</div>
-          ) : (
-            <div style={{ width: 240, padding: 20, background: 'rgba(255,255,255,0.1)', borderRadius: 20 }}>
-              <input autoFocus placeholder="Nom (max 15)" maxLength={15} value={newUserName} onChange={(e) => setNewUserName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && createUser()}
-                style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', background: 'rgba(255,255,255,0.2)', color: 'white', marginBottom: 12, outline: 'none' }} />
-              <button onClick={createUser} style={{ background: '#3b82f6', border: 'none', padding: '10px 20px', borderRadius: 10, color: 'white', cursor: 'pointer', marginRight: 10 }}>Créer</button>
-              <button onClick={() => setShowNewUser(false)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', padding: '10px 20px', borderRadius: 10, color: 'white', cursor: 'pointer' }}>Annuler</button>
-            </div>
-          )}
+    <div style={{ width: 240, padding: 20, background: 'rgba(255,255,255,0.1)', borderRadius: 20 }}>
+      <input
+        autoFocus 
+        placeholder="Nom (max 15)" 
+        maxLength={15} 
+        value={newUserName} 
+        onChange={(e) => setNewUserName(e.target.value)} 
+        onKeyPress={(e) => e.key === 'Enter' && createUser()}
+        style={{ 
+          width: '100%', 
+          padding: '12px', 
+          borderRadius: 10, 
+          border: 'none', 
+          background: 'rgba(255,255,255,0.2)', 
+          color: 'white', 
+          marginBottom: 12, 
+          outline: 'none',
+          boxSizing: 'border-box'  // ← CE QUI CORRIGE LE DÉBORDEMENT
+          }}
+        />
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <button onClick={createUser} style={{ background: '#3b82f6', border: 'none', padding: '10px 20px', borderRadius: 10, color: 'white', cursor: 'pointer' }}>Créer</button>
+          <button onClick={() => setShowNewUser(false)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.3)', padding: '10px 20px', borderRadius: 10, color: 'white', cursor: 'pointer' }}>Annuler</button>
         </div>
-      </div>
     </div>
   );
 }
