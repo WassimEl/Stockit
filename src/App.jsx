@@ -706,7 +706,7 @@ function HomePage({ onGameClick, currentTheme, backlog }) {
           <div style={{ flex: 1, position: 'relative' }}>
             <input
               type="text"
-              placeholder="🔍 Rechercher un jeu... (tapez et les suggestions apparaissent)"
+              placeholder="🔍 Rechercher un jeu..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleKeyDown}
