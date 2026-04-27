@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
 const RAWG_KEY = '346adb8ac9fc444989a53b8b7256a277';
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.7.0';
 
 // Thèmes
 const THEMES = {
@@ -52,7 +52,7 @@ const keyframes = `
 
 // Base de données IndexedDB
 const DB_NAME = 'GameTrackerDB';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_NAME = 'userData';
 
 function openDB() {
@@ -120,7 +120,7 @@ async function deleteUser(userId) {
 async function searchGames(query, page = 1) {
   try {
     const res = await fetch(
-      `https://api.rawg.io/api/games?key=${RAWG_KEY}&search=${encodeURIComponent(query)}&page_size=40&page=${page}`
+      `https://api.rawg.io/api/games?key=${RAWG_KEY}&search=${encodeURIComponent(query)}&page_size=20&page=${page}`
     );
     const data = await res.json();
     return {
@@ -337,7 +337,7 @@ function StarRating({ rating, onRatingChange }) {
 }
 
 // Carte de jeu
-function GameCard({ game, onClick, currentTheme, showStatus = false, status = null }) {
+function GameCard({ game, onClick, currentTheme, showStatus = false, status = null, onDelete = null }) {
   const statusInfo = GAME_STATUS.find(s => s.id === status);
   
   return (
@@ -379,6 +379,29 @@ function GameCard({ game, onClick, currentTheme, showStatus = false, status = nu
           {statusInfo.emoji}
         </div>
       )}
+      {onDelete && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(game.id); }}
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            right: 8,
+            background: '#ef4444',
+            border: 'none',
+            borderRadius: 20,
+            padding: '4px 8px',
+            fontSize: 11,
+            color: 'white',
+            cursor: 'pointer',
+            zIndex: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+        >
+          ✕ Supprimer
+        </button>
+      )}
       <div style={{ flexShrink: 0 }}>
         {game.image ? (
           <img src={game.image} alt={game.name} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
@@ -403,7 +426,7 @@ function GameCard({ game, onClick, currentTheme, showStatus = false, status = nu
 }
 
 // Page Accueil
-function HomePage({ onGameClick, currentTheme, backlog }) {
+function HomePage({ onGameClick, currentTheme, backlog, searchQuery, setSearchQuery, searchResults, setSearchResults, searching, setSearching }) {
   const [categoryGames, setCategoryGames] = useState({});
   const [loading, setLoading] = useState({});
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -412,13 +435,11 @@ function HomePage({ onGameClick, currentTheme, backlog }) {
   const [categoryPage, setCategoryPage] = useState(1);
   const [categoryHasMore, setCategoryHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searching, setSearching] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasMore, setSearchHasMore] = useState(false);
-  const [showSearchModal, setShowSearchModal] = useState(false);
   const [loadingSearchMore, setLoadingSearchMore] = useState(false);
+  const [debounceTimer, setDebounceTimer] = useState(null);
 
   // Gestion touche ESC
   useEffect(() => {
@@ -445,26 +466,30 @@ function HomePage({ onGameClick, currentTheme, backlog }) {
     loadAllCategories();
   }, []);
 
-  // Recherche
-  const handleSearch = async (query, page = 1) => {
-    if (!query.trim()) return;
-    setSearching(true);
-    const { games, nextPage } = await searchGames(query, page);
-    if (page === 1) {
-      setSearchResults(games);
-    } else {
-      setSearchResults(prev => [...prev, ...games]);
+  // Recherche en temps réel avec debounce
+  useEffect(() => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setShowSearchModal(false);
+      return;
     }
-    setSearchHasMore(nextPage !== null);
-    setSearchPage(nextPage || 1);
-    setSearching(false);
-  };
-
-  const handleSearchSubmit = async () => {
-    if (!searchQuery.trim()) return;
-    await handleSearch(searchQuery, 1);
-    setShowSearchModal(true);
-  };
+    
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      const { games, nextPage } = await searchGames(searchQuery, 1);
+      setSearchResults(games);
+      setSearchHasMore(nextPage !== null);
+      setSearchPage(nextPage || 1);
+      setSearching(false);
+      setShowSearchModal(true);
+    }, 500);
+    
+    setDebounceTimer(timer);
+    
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const loadMoreSearch = async () => {
     if (loadingSearchMore || !searchHasMore) return;
@@ -559,7 +584,7 @@ function HomePage({ onGameClick, currentTheme, backlog }) {
   }
 
   // Modal recherche
-  if (showSearchModal) {
+  if (showSearchModal && searchResults.length > 0) {
     return (
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 1000, overflow: 'auto', padding: 20 }}>
         <div style={{ maxWidth: 1400, margin: '0 auto' }}>
@@ -576,44 +601,38 @@ function HomePage({ onGameClick, currentTheme, backlog }) {
             }}>✕ Fermer</button>
           </div>
           
-          {searching && searchResults.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60 }}>Recherche en cours...</div>
-          ) : (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 20 }}>
-                {searchResults.map(game => (
-                  <GameCard 
-                    key={game.id} 
-                    game={game} 
-                    onClick={onGameClick} 
-                    currentTheme={currentTheme}
-                    showStatus={true}
-                    status={getGameStatus(game.id)}
-                  />
-                ))}
-              </div>
-              
-              {searchHasMore && (
-                <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
-                  <button
-                    onClick={loadMoreSearch}
-                    disabled={loadingSearchMore}
-                    style={{
-                      background: currentTheme.card,
-                      border: `1px solid ${currentTheme.accent}`,
-                      borderRadius: 50,
-                      padding: '12px 32px',
-                      cursor: loadingSearchMore ? 'wait' : 'pointer',
-                      color: currentTheme.text,
-                      fontSize: 14,
-                      fontWeight: 500
-                    }}
-                  >
-                    {loadingSearchMore ? 'Chargement...' : '+ Charger plus de résultats'}
-                  </button>
-                </div>
-              )}
-            </>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 20 }}>
+            {searchResults.map(game => (
+              <GameCard 
+                key={game.id} 
+                game={game} 
+                onClick={onGameClick} 
+                currentTheme={currentTheme}
+                showStatus={true}
+                status={getGameStatus(game.id)}
+              />
+            ))}
+          </div>
+          
+          {searchHasMore && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
+              <button
+                onClick={loadMoreSearch}
+                disabled={loadingSearchMore}
+                style={{
+                  background: currentTheme.card,
+                  border: `1px solid ${currentTheme.accent}`,
+                  borderRadius: 50,
+                  padding: '12px 32px',
+                  cursor: loadingSearchMore ? 'wait' : 'pointer',
+                  color: currentTheme.text,
+                  fontSize: 14,
+                  fontWeight: 500
+                }}
+              >
+                {loadingSearchMore ? 'Chargement...' : '+ Charger plus de résultats'}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -622,16 +641,15 @@ function HomePage({ onGameClick, currentTheme, backlog }) {
 
   return (
     <div>
-      {/* Barre de recherche */}
-      <div style={{ marginBottom: 32, display: 'flex', gap: 12 }}>
+      {/* Barre de recherche avec suggestions en temps réel */}
+      <div style={{ marginBottom: 32, position: 'relative' }}>
         <input
           type="text"
-          placeholder="🔍 Rechercher un jeu (Titre, genre...)"
+          placeholder="🔍 Rechercher un jeu (Titre, genre...) - La recherche est instantanée"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSearchSubmit()}
           style={{
-            flex: 1,
+            width: '100%',
             padding: '14px 20px',
             borderRadius: 50,
             border: `2px solid ${currentTheme.border}`,
@@ -644,21 +662,11 @@ function HomePage({ onGameClick, currentTheme, backlog }) {
           onFocus={(e) => e.target.style.borderColor = currentTheme.accent}
           onBlur={(e) => e.target.style.borderColor = currentTheme.border}
         />
-        <button
-          onClick={handleSearchSubmit}
-          style={{
-            background: currentTheme.accent,
-            border: 'none',
-            borderRadius: 50,
-            padding: '0 24px',
-            color: 'white',
-            cursor: 'pointer',
-            fontWeight: 600,
-            fontSize: 14
-          }}
-        >
-          Chercher
-        </button>
+        {searching && searchQuery.trim() && (
+          <div style={{ position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)' }}>
+            <div style={{ width: 20, height: 20, border: `2px solid ${currentTheme.accent}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.6s linear infinite' }} />
+          </div>
+        )}
       </div>
 
       {/* Catégories en défilement horizontal */}
@@ -742,10 +750,25 @@ function UpcomingPage({ onGameClick, currentTheme, backlog }) {
     return game ? game.status : null;
   };
 
+  const getDaysLeft = (dateStr) => {
+    if (!dateStr) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const releaseDate = new Date(dateStr);
+    releaseDate.setHours(0, 0, 0, 0);
+    const diffTime = releaseDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return 'Déjà sorti';
+    if (diffDays === 0) return 'Sort aujourd\'hui !';
+    if (diffDays === 1) return 'Sort demain !';
+    return `Sort dans ${diffDays} jours`;
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return 'Date inconnue';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   return (
@@ -756,17 +779,41 @@ function UpcomingPage({ onGameClick, currentTheme, backlog }) {
       ) : games.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 60, color: currentTheme.muted }}>Aucune sortie prévue</div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 20 }}>
-          {games.map(game => (
-            <GameCard
-              key={game.id}
-              game={game}
-              onClick={onGameClick}
-              currentTheme={currentTheme}
-              showStatus={true}
-              status={getGameStatus(game.id)}
-            />
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+          {games.map(game => {
+            const daysLeft = getDaysLeft(game.released);
+            return (
+              <div
+                key={game.id}
+                onClick={() => onGameClick(game)}
+                style={{
+                  background: currentTheme.card,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  cursor: 'pointer',
+                  transition: 'transform 0.2s',
+                  border: `1px solid ${currentTheme.border}`,
+                  animation: 'fadeIn 0.3s ease-out'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                {game.image ? (
+                  <img src={game.image} alt={game.name} style={{ width: '100%', height: 140, objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '100%', height: 140, background: currentTheme.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 48 }}>🎮</div>
+                )}
+                <div style={{ padding: 12 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{game.name}</div>
+                  <div style={{ color: currentTheme.accent, fontSize: 11 }}>📅 {formatDate(game.released)}</div>
+                  <div style={{ color: daysLeft === 'Déjà sorti' ? '#ef4444' : '#22c55e', fontSize: 11, fontWeight: 600, marginTop: 4 }}>
+                    {daysLeft}
+                  </div>
+                  <div style={{ color: currentTheme.muted, fontSize: 11, marginTop: 4 }}>⭐ {game.rating?.toFixed(1) || '?'}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -774,7 +821,7 @@ function UpcomingPage({ onGameClick, currentTheme, backlog }) {
 }
 
 // Page Bibliothèque
-function LibraryPage({ backlog, onUpdateRating, onUpdateTime, onUpdateStatus, currentTheme }) {
+function LibraryPage({ backlog, onUpdateRating, onUpdateTime, onUpdateStatus, onDeleteGame, currentTheme }) {
   const [filter, setFilter] = useState('all');
 
   const filteredGames = filter === 'all' ? backlog : backlog.filter(g => g.status === filter);
@@ -802,8 +849,30 @@ function LibraryPage({ backlog, onUpdateRating, onUpdateTime, onUpdateStatus, cu
               borderRadius: 16,
               overflow: 'hidden',
               border: `1px solid ${currentTheme.border}`,
-              animation: 'fadeIn 0.3s ease-out'
+              animation: 'fadeIn 0.3s ease-out',
+              position: 'relative'
             }}>
+              <button
+                onClick={() => onDeleteGame(game.id)}
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  background: '#ef4444',
+                  border: 'none',
+                  borderRadius: 20,
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  color: 'white',
+                  cursor: 'pointer',
+                  zIndex: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4
+                }}
+              >
+                ✕ Supprimer
+              </button>
               {game.image ? (
                 <img src={game.image} alt={game.name} style={{ width: '100%', height: 160, objectFit: 'cover' }} />
               ) : (
@@ -852,12 +921,15 @@ function LibraryPage({ backlog, onUpdateRating, onUpdateTime, onUpdateStatus, cu
 function RandomPage({ onGameClick, currentTheme }) {
   const [randomGame, setRandomGame] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   const getRandomGameHandler = async () => {
+    setIsAnimating(true);
     setLoading(true);
     const game = await getRandomGame();
     setRandomGame(game);
     setLoading(false);
+    setTimeout(() => setIsAnimating(false), 500);
   };
 
   useEffect(() => {
@@ -866,7 +938,7 @@ function RandomPage({ onGameClick, currentTheme }) {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 20, fontSize: 22 }}>🎲 Surprise moi !</h2>
+      <h2 style={{ marginBottom: 20, fontSize: 22 }}>🎲 Surprends-moi !</h2>
       
       <div style={{ marginBottom: 24 }}>
         <button 
@@ -881,7 +953,8 @@ function RandomPage({ onGameClick, currentTheme }) {
             cursor: loading ? 'wait' : 'pointer',
             fontWeight: 600,
             fontSize: 16,
-            transition: '0.2s'
+            transition: '0.2s',
+            animation: loading ? 'spin 1s infinite' : 'none'
           }}
         >
           🎲 {loading ? 'Recherche...' : 'Nouvelle suggestion'}
@@ -907,7 +980,7 @@ function RandomPage({ onGameClick, currentTheme }) {
           borderRadius: 20,
           overflow: 'hidden',
           border: `2px solid ${currentTheme.accent}`,
-          animation: 'fadeIn 0.3s ease-out'
+          animation: isAnimating ? 'fadeIn 0.3s ease-out' : 'fadeIn 0.3s ease-out'
         }}>
           <div style={{ display: 'flex', flexWrap: 'wrap' }}>
             {randomGame.image && (
@@ -961,6 +1034,9 @@ function GameTracker({ user, onLogout }) {
   const [selectedGameModal, setSelectedGameModal] = useState(null);
   const [userName, setUserName] = useState(user.name?.substring(0, 15) || 'Joueur');
   const [avatar, setAvatar] = useState(user.avatar || '🎮');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   // Gestion touche ESC pour le modal d'ajout
   useEffect(() => {
@@ -1028,14 +1104,29 @@ function GameTracker({ user, onLogout }) {
     ));
   };
 
+  const deleteGame = (gameId) => {
+    setBacklog(prev => prev.filter(game => game.id !== gameId));
+  };
+
   const exportAllData = () => {
-    const exportData = { user: { name: userName }, backlog, preferences: { theme, isDarkMode }, version: APP_VERSION };
+    const exportData = { 
+      user: { 
+        name: userName,
+        avatar: avatar,
+        theme: theme,
+        isDarkMode: isDarkMode
+      }, 
+      backlog: backlog,
+      preferences: { theme, isDarkMode },
+      version: APP_VERSION,
+      exportDate: new Date().toISOString()
+    };
     const dataStr = JSON.stringify(exportData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `stockit-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `stockit-backup-${userName}-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1049,11 +1140,18 @@ function GameTracker({ user, onLogout }) {
         const imported = JSON.parse(e.target.result);
         if (imported.backlog && Array.isArray(imported.backlog)) {
           setBacklog(imported.backlog);
-          if (imported.preferences) {
-            setTheme(imported.preferences.theme || 'blue');
-            setIsDarkMode(imported.preferences.isDarkMode !== false);
+          
+          if (imported.user) {
+            if (imported.user.name) setUserName(imported.user.name.substring(0, 15));
+            if (imported.user.avatar) setAvatar(imported.user.avatar);
+            if (imported.user.theme) setTheme(imported.user.theme);
+            if (imported.user.isDarkMode !== undefined) setIsDarkMode(imported.user.isDarkMode);
+          } else if (imported.preferences) {
+            if (imported.preferences.theme) setTheme(imported.preferences.theme);
+            if (imported.preferences.isDarkMode !== undefined) setIsDarkMode(imported.preferences.isDarkMode);
           }
-          alert(`✅ ${imported.backlog.length} jeux importés !`);
+          
+          alert(`✅ ${imported.backlog.length} jeux importés ! Profil : ${imported.user?.name || 'Importé'}`);
         } else {
           alert('❌ Format invalide');
         }
@@ -1082,7 +1180,7 @@ function GameTracker({ user, onLogout }) {
       <style>{keyframes}</style>
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: 20 }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{
               width: 48,
@@ -1098,11 +1196,11 @@ function GameTracker({ user, onLogout }) {
             </div>
             <div>
               <h1 style={{ fontSize: 26, margin: 0, fontWeight: 700 }}>📦 <span style={{ color: currentTheme.accent }}>Stockit</span></h1>
-              <div style={{ color: currentTheme.muted, fontSize: 13 }}>{userName}</div>
+              <div style={{ color: currentTheme.muted, fontSize: 12 }}>Connecté en tant que <span style={{ color: currentTheme.accent, fontWeight: 500 }}>{userName}</span></div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => { setActiveTab('home'); }} style={{
+            <button onClick={() => { setActiveTab('home'); setSearchQuery(''); }} style={{
               background: activeTab === 'home' ? currentTheme.accent : 'transparent',
               border: `1px solid ${activeTab === 'home' ? currentTheme.accent : currentTheme.border}`,
               borderRadius: 50,
@@ -1131,7 +1229,7 @@ function GameTracker({ user, onLogout }) {
               color: activeTab === 'library' ? 'white' : currentTheme.text,
               fontSize: 13,
               fontWeight: 500
-            }}>📚 Backlog</button>
+            }}>📚 Bibliothèque</button>
             <button onClick={() => setActiveTab('random')} style={{
               background: activeTab === 'random' ? currentTheme.accent : 'transparent',
               border: `1px solid ${activeTab === 'random' ? currentTheme.accent : currentTheme.border}`,
@@ -1251,6 +1349,12 @@ function GameTracker({ user, onLogout }) {
             onGameClick={(game) => setSelectedGameModal(game)} 
             currentTheme={currentTheme} 
             backlog={backlog}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            searchResults={searchResults}
+            setSearchResults={setSearchResults}
+            searching={searching}
+            setSearching={setSearching}
           />
         )}
         {activeTab === 'upcoming' && <UpcomingPage onGameClick={(game) => setSelectedGameModal(game)} currentTheme={currentTheme} backlog={backlog} />}
@@ -1260,6 +1364,7 @@ function GameTracker({ user, onLogout }) {
             onUpdateRating={updateGameRating}
             onUpdateTime={updateGameTime}
             onUpdateStatus={updateGameStatus}
+            onDeleteGame={deleteGame}
             currentTheme={currentTheme}
           />
         )}
